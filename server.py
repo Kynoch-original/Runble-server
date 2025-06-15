@@ -3,81 +3,63 @@ import sqlite3
 import os
 
 app = Flask(__name__)
-DB_PATH = "scores.db"
+DB_PATH = "score.db"
 
 def init_db():
     if not os.path.exists(DB_PATH):
         conn = sqlite3.connect(DB_PATH)
         cursor = conn.cursor()
         cursor.execute('''
-            CREATE TABLE scores (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                nickname TEXT NOT NULL UNIQUE,
-                score INTEGER NOT NULL,
-                user_id TEXT NOT NULL
+            CREATE TABLE best_score (
+                id INTEGER PRIMARY KEY,
+                score INTEGER NOT NULL
             )
         ''')
+        cursor.execute("INSERT INTO best_score (id, score) VALUES (?, ?)", (1, 0))
         conn.commit()
         conn.close()
-        print("[✅] Базу створено вперше.")
+        print("[✅] Локальна база створена.")
     else:
-        print("[📁] База вже існує. Перезапуск без втрати даних.")
-    print("📂 База створена за адресою:", os.path.abspath(DB_PATH))
+        print("[📁] База вже існує.")
 
-
-@app.route("/scores", methods=["GET"])
-def get_scores():
+@app.route("/score", methods=["GET"])
+def get_score():
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
-    cursor.execute("SELECT nickname, score FROM scores ORDER BY score DESC LIMIT 5")
-    results = cursor.fetchall()
+    cursor.execute("SELECT score FROM best_score WHERE id = 1")
+    result = cursor.fetchone()
     conn.close()
-    return jsonify([{"nickname": row[0], "score": row[1]} for row in results])
+    return jsonify({"best_score": result[0] if result else 0})
 
-
-@app.route("/scores", methods=["POST"])
+@app.route("/score", methods=["POST"])
 def post_score():
     data = request.get_json(force=True)
-    print("[📥] Отримано JSON:", data)
+    new_score = data.get("score")
 
-    nickname = data.get("nickname")
-    score = data.get("score")
-    user_id = data.get("user_id")
-
-    print(f"[+] Отримано результат: {nickname} — {score} від {user_id}")
-    print(f"[📡] Надійшов POST-запит на /scores")
-
-    if not nickname or not user_id:
-        return jsonify({"error": "Missing nickname or user_id"}), 400
+    if new_score is None:
+        return jsonify({"error": "Missing score"}), 400
 
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
 
-    cursor.execute("SELECT score, user_id FROM scores WHERE nickname = ?", (nickname,))
-    existing = cursor.fetchone()
+    cursor.execute("SELECT score FROM best_score WHERE id = 1")
+    current_score = cursor.fetchone()[0]
 
-    if existing:
-        existing_score, existing_user_id = existing
-        if user_id != existing_user_id:
-            conn.close()
-            print(f"[🚫] Нікнейм {nickname} вже зайнятий іншим користувачем.")
-            return jsonify({"error": "Nickname already taken by another user"}), 403
-
-        if score > existing_score:
-            cursor.execute("UPDATE scores SET score = ? WHERE nickname = ?", (score, nickname))
-            print(f"[⬆] Оновлено рекорд для {nickname}: {score}")
-        else:
-            print(f"[⚠] Старий рекорд кращий ({existing_score}). Нічого не змінено.")
+    if new_score > current_score:
+        cursor.execute("UPDATE best_score SET score = ? WHERE id = 1", (new_score,))
+        conn.commit()
+        updated = True
     else:
-        cursor.execute("INSERT INTO scores (nickname, score, user_id) VALUES (?, ?, ?)", (nickname, score, user_id))
-        print(f"[➕] Додано нового гравця: {nickname} → {score} | ID: {user_id}")
+        updated = False
 
-    conn.commit()
     conn.close()
 
-    return jsonify({"message": "Score processed", "nickname": nickname}), 201
-
+    return jsonify({
+        "message": "Score updated" if updated else "Score not higher",
+        "current_best": max(current_score, new_score)
+    }), 200
 
 if __name__ == "__main__":
     init_db()
     app.run(debug=True, host="127.0.0.1", port=5000)
+
