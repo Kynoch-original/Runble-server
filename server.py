@@ -2,64 +2,63 @@ from flask import Flask, request, jsonify
 import sqlite3
 import os
 
-app = Flask(__name__)
 DB_PATH = "score.db"
 
+app = Flask(__name__)
+
 def init_db():
-    if not os.path.exists(DB_PATH):
-        conn = sqlite3.connect(DB_PATH)
-        cursor = conn.cursor()
-        cursor.execute('''
-            CREATE TABLE best_score (
-                id INTEGER PRIMARY KEY,
-                score INTEGER NOT NULL
-            )
-        ''')
-        cursor.execute("INSERT INTO best_score (id, score) VALUES (?, ?)", (1, 0))
-        conn.commit()
-        conn.close()
-        print("[✅] Локальна база створена.")
-    else:
-        print("[📁] База вже існує.")
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS best_score (
+            nick TEXT PRIMARY KEY,
+            score INTEGER NOT NULL
+        )
+    ''')
+    conn.commit()
+    conn.close()
+    print("✅ База ініціалізована")
 
 @app.route("/score", methods=["GET"])
 def get_score():
+    nick = request.args.get("nick")
+    if not nick:
+        return jsonify({"error": "Missing nick"}), 400
+
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
-    cursor.execute("SELECT score FROM best_score WHERE id = 1")
+    cursor.execute("SELECT score FROM best_score WHERE nick = ?", (nick,))
     result = cursor.fetchone()
     conn.close()
-    return jsonify({"best_score": result[0] if result else 0})
+
+    return jsonify({"score": result[0] if result else 0})
 
 @app.route("/score", methods=["POST"])
 def post_score():
     data = request.get_json(force=True)
-    new_score = data.get("score")
+    nick = data.get("nick")
+    score = data.get("score")
 
-    if new_score is None:
-        return jsonify({"error": "Missing score"}), 400
+    if not nick or score is None:
+        return jsonify({"error": "Missing nick or score"}), 400
 
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
 
-    cursor.execute("SELECT score FROM best_score WHERE id = 1")
-    current_score = cursor.fetchone()[0]
+    cursor.execute("SELECT score FROM best_score WHERE nick = ?", (nick,))
+    result = cursor.fetchone()
 
-    if new_score > current_score:
-        cursor.execute("UPDATE best_score SET score = ? WHERE id = 1", (new_score,))
-        conn.commit()
-        updated = True
-    else:
-        updated = False
+    if result is None:
+        cursor.execute("INSERT INTO best_score (nick, score) VALUES (?, ?)", (nick, score))
+    elif score > result[0]:
+        cursor.execute("UPDATE best_score SET score = ? WHERE nick = ?", (score, nick))
 
+    conn.commit()
     conn.close()
-
-    return jsonify({
-        "message": "Score updated" if updated else "Score not higher",
-        "current_best": max(current_score, new_score)
-    }), 200
+    return jsonify({"status": "ok"})
 
 if __name__ == "__main__":
     init_db()
-    app.run(debug=True, host="127.0.0.1", port=5000)
+    port = int(os.environ.get("PORT", 10000))
+    app.run(host="0.0.0.0", port=port)
 
