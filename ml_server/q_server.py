@@ -4,13 +4,10 @@ import os
 
 app = Flask(__name__)
 
-# ✅ Доступні дії
 actions = ['up', 'down', 'left', 'right', 'attack']
 
-# ✅ Повний шлях до Q-таблиці
 q_table_path = os.path.join(os.path.dirname(__file__), "q_table.json")
 
-# ✅ Ініціалізація агента з діями + завантаження таблиці
 agent = QLearningAgent(actions, table_path=q_table_path)
 agent.load_q_table()
 

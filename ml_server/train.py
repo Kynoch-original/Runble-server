@@ -5,7 +5,6 @@ actions = ["up", "down", "left", "right", "attack", "wait"]
 agent = QLearningAgent(actions, epsilon=0.2)
 
 def generate_state():
-    # Випадкова відстань до гравця по X і Y
     dx = random.uniform(-300, 300)
     dy = random.uniform(-300, 300)
     return [dx, dy]
@@ -17,7 +16,6 @@ for episode in range(20000):
     state = generate_state()
     action = random.choice(actions)
 
-    # Рух зомбі в напрямку дії
     dx, dy = state
     if action == "left": dx -= 10
     if action == "right": dx += 10
@@ -28,16 +26,14 @@ for episode in range(20000):
     dist_now = distance(state)
     dist_next = distance(next_state)
 
-    # Обчислюємо винагороду
     if action == "attack":
         reward = 5 if dist_now < 100 else -2
     elif dist_next < dist_now:
-        reward = 1  # Зблизився
+        reward = 1  
     else:
-        reward = -1  # Відійшов
+        reward = -1  
 
     agent.learn(state, action, reward, next_state, actions)
 
-# Зберігаємо таблицю
 agent.save_q_table()
 print("✅ Q-table trained and saved")
