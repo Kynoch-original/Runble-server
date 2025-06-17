@@ -29,7 +29,11 @@ def create_app():
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS best_score (
                 nick TEXT PRIMARY KEY,
-                score INTEGER
+                score INTEGER,
+                damage INTEGER DEFAULT 1,
+                max_health INTEGER DEFAULT 100,
+                fire_rate REAL DEFAULT 0.5,
+                spawn_wait REAL DEFAULT 1.0
             )
         """)
         conn.commit()
@@ -54,7 +58,11 @@ def create_app():
             if score > row[0]:
                 cursor.execute("UPDATE best_score SET score = %s WHERE nick = %s", (score, nick))
         else:
-            cursor.execute("INSERT INTO best_score (nick, score) VALUES (%s, %s)", (nick, score))
+            cursor.execute("""
+                INSERT INTO best_score (nick, score)
+                VALUES (%s, %s)
+                ON CONFLICT (nick) DO NOTHING
+            """, (nick, score))
 
         conn.commit()
         conn.close()
@@ -70,6 +78,60 @@ def create_app():
 
         top_scores = [{"nickname": nick, "score": score} for nick, score in results]
         return jsonify(top_scores), 200
+
+    @app.route("/save_progress", methods=["POST"])
+    def save_progress():
+        data = request.get_json()
+        nick = data.get("nick")
+        if not nick:
+            return jsonify({"error": "Missing nick"}), 400
+
+        values = (
+            data.get("score", 0),
+            data.get("damage", 1),
+            data.get("max_health", 100),
+            data.get("fire_rate", 0.5),
+            data.get("spawn_wait", 1.0),
+            nick
+        )
+
+        conn = get_connection()
+        cursor = conn.cursor()
+        cursor.execute("""
+            UPDATE best_score SET
+                score = %s,
+                damage = %s,
+                max_health = %s,
+                fire_rate = %s,
+                spawn_wait = %s
+            WHERE nick = %s
+        """, values)
+        conn.commit()
+        conn.close()
+
+        return jsonify({"status": "saved"}), 200
+
+    @app.route("/load_progress", methods=["POST"])
+    def load_progress():
+        data = request.get_json()
+        nick = data.get("nick")
+        if not nick:
+            return jsonify({"error": "Missing nick"}), 400
+
+        conn = get_connection()
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT score, damage, max_health, fire_rate, spawn_wait
+            FROM best_score WHERE nick = %s
+        """, (nick,))
+        row = cursor.fetchone()
+        conn.close()
+
+        if row:
+            keys = ["score", "damage", "max_health", "fire_rate", "spawn_wait"]
+            return jsonify(dict(zip(keys, row))), 200
+        else:
+            return jsonify({"error": "Not found"}), 404
 
     with app.app_context():
         init_db()
