@@ -2,3 +2,5 @@ flask
 requests
 gunicorn
 flask-cors
+psycopg2-binary
+# trigger rebuild
