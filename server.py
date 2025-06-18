@@ -86,30 +86,52 @@ def create_app():
         if not nick:
             return jsonify({"error": "Missing nick"}), 400
 
-        values = (
-            data.get("score", 0),
-            data.get("damage", 1),
-            data.get("max_health", 100),
-            data.get("fire_rate", 0.5),
-            data.get("spawn_wait", 1.0),
-            nick
-        )
+        new_score = data.get("score", 0)
+        damage = data.get("damage", 1)
+        max_health = data.get("max_health", 100)
+        fire_rate = data.get("fire_rate", 0.5)
+        spawn_wait = data.get("spawn_wait", 1.0)
 
         conn = get_connection()
         cursor = conn.cursor()
-        cursor.execute("""
-            UPDATE best_score SET
-                score = %s,
-                damage = %s,
-                max_health = %s,
-                fire_rate = %s,
-                spawn_wait = %s
-            WHERE nick = %s
-        """, values)
+
+        # Перевіряємо чи є такий гравець
+        cursor.execute("SELECT score FROM best_score WHERE nick = %s", (nick,))
+        row = cursor.fetchone()
+
+        if row:
+            current_score = row[0]
+            if new_score > current_score:
+                cursor.execute("""
+                    UPDATE best_score SET
+                        score = %s,
+                        damage = %s,
+                        max_health = %s,
+                        fire_rate = %s,
+                        spawn_wait = %s
+                    WHERE nick = %s
+                """, (new_score, damage, max_health, fire_rate, spawn_wait, nick))
+            else:
+                # оновлюємо лише прокачку
+                cursor.execute("""
+                    UPDATE best_score SET
+                        damage = %s,
+                        max_health = %s,
+                        fire_rate = %s,
+                        spawn_wait = %s
+                    WHERE nick = %s
+                """, (damage, max_health, fire_rate, spawn_wait, nick))
+        else:
+            # якщо гравця ще не існує — створюємо
+            cursor.execute("""
+                INSERT INTO best_score (score, damage, max_health, fire_rate, spawn_wait, nick)
+                VALUES (%s, %s, %s, %s, %s, %s)
+            """, (new_score, damage, max_health, fire_rate, spawn_wait, nick))
+
         conn.commit()
         conn.close()
-
         return jsonify({"status": "saved"}), 200
+
 
     @app.route("/load_progress", methods=["POST"])
     def load_progress():
