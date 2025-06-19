@@ -3,7 +3,6 @@ import psycopg2
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 
-# Отримання параметрів з ENV
 DB_HOST = os.environ.get("DB_HOST")
 DB_NAME = os.environ.get("DB_NAME")
 DB_USER = os.environ.get("DB_USER")
@@ -26,6 +25,8 @@ def create_app():
     def init_db():
         conn = get_connection()
         cursor = conn.cursor()
+
+        # Створюємо таблицю якщо її ще нема
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS best_score (
                 nick TEXT PRIMARY KEY,
@@ -36,6 +37,21 @@ def create_app():
                 spawn_wait REAL DEFAULT 1.0
             )
         """)
+
+        # Додаємо колонку level, якщо її ще нема
+        cursor.execute("""
+            DO $$
+            BEGIN
+                IF NOT EXISTS (
+                    SELECT 1 FROM information_schema.columns 
+                    WHERE table_name='best_score' AND column_name='level'
+                ) THEN
+                    ALTER TABLE best_score ADD COLUMN level INTEGER DEFAULT 1;
+                END IF;
+            END
+            $$;
+        """)
+
         conn.commit()
         conn.close()
 
@@ -50,7 +66,6 @@ def create_app():
 
         conn = get_connection()
         cursor = conn.cursor()
-
         cursor.execute("SELECT score FROM best_score WHERE nick = %s", (nick,))
         row = cursor.fetchone()
 
@@ -91,11 +106,10 @@ def create_app():
         max_health = data.get("max_health", 100)
         fire_rate = data.get("fire_rate", 0.5)
         spawn_wait = data.get("spawn_wait", 1.0)
+        level = data.get("level", 1)
 
         conn = get_connection()
         cursor = conn.cursor()
-
-        # Перевіряємо чи є такий гравець
         cursor.execute("SELECT score FROM best_score WHERE nick = %s", (nick,))
         row = cursor.fetchone()
 
@@ -108,30 +122,29 @@ def create_app():
                         damage = %s,
                         max_health = %s,
                         fire_rate = %s,
-                        spawn_wait = %s
+                        spawn_wait = %s,
+                        level = %s
                     WHERE nick = %s
-                """, (new_score, damage, max_health, fire_rate, spawn_wait, nick))
+                """, (new_score, damage, max_health, fire_rate, spawn_wait, level, nick))
             else:
-                # оновлюємо лише прокачку
                 cursor.execute("""
                     UPDATE best_score SET
                         damage = %s,
                         max_health = %s,
                         fire_rate = %s,
-                        spawn_wait = %s
+                        spawn_wait = %s,
+                        level = %s
                     WHERE nick = %s
-                """, (damage, max_health, fire_rate, spawn_wait, nick))
+                """, (damage, max_health, fire_rate, spawn_wait, level, nick))
         else:
-            # якщо гравця ще не існує — створюємо
             cursor.execute("""
-                INSERT INTO best_score (score, damage, max_health, fire_rate, spawn_wait, nick)
-                VALUES (%s, %s, %s, %s, %s, %s)
-            """, (new_score, damage, max_health, fire_rate, spawn_wait, nick))
+                INSERT INTO best_score (score, damage, max_health, fire_rate, spawn_wait, level, nick)
+                VALUES (%s, %s, %s, %s, %s, %s, %s)
+            """, (new_score, damage, max_health, fire_rate, spawn_wait, level, nick))
 
         conn.commit()
         conn.close()
         return jsonify({"status": "saved"}), 200
-
 
     @app.route("/load_progress", methods=["POST"])
     def load_progress():
@@ -143,14 +156,14 @@ def create_app():
         conn = get_connection()
         cursor = conn.cursor()
         cursor.execute("""
-            SELECT score, damage, max_health, fire_rate, spawn_wait
+            SELECT score, damage, max_health, fire_rate, spawn_wait, level
             FROM best_score WHERE nick = %s
         """, (nick,))
         row = cursor.fetchone()
         conn.close()
 
         if row:
-            keys = ["score", "damage", "max_health", "fire_rate", "spawn_wait"]
+            keys = ["score", "damage", "max_health", "fire_rate", "spawn_wait", "level"]
             return jsonify(dict(zip(keys, row))), 200
         else:
             return jsonify({"error": "Not found"}), 404
