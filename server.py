@@ -112,29 +112,45 @@ def create_app():
 
         conn = get_connection()
         cursor = conn.cursor()
-        cursor.execute("SELECT 1 FROM best_score WHERE nick = %s", (nick,))
-        exists = cursor.fetchone()
+        cursor.execute("SELECT score FROM best_score WHERE nick = %s", (nick,))
+        row = cursor.fetchone()
 
-        if exists:
-            # 🔁 Завжди оновлюємо всі поля, навіть якщо score менший
-            cursor.execute("""
-                UPDATE best_score SET
-                    score = %s, damage = %s, max_health = %s, fire_rate = %s,
-                    spawn_wait = %s, level = %s, xp_bar_value = %s, health_bar_value = %s
-                WHERE nick = %s
-            """, (new_score, damage, max_health, fire_rate, spawn_wait, level, xp_bar_value, health_bar_value, nick))
+        if row:
+            current_best = row[0]
+            if new_score > current_best:
+                cursor.execute("""
+                    UPDATE best_score SET
+                        score = %s, last_score = %s,
+                        damage = %s, max_health = %s, fire_rate = %s,
+                        spawn_wait = %s, level = %s,
+                        xp_bar_value = %s, health_bar_value = %s
+                    WHERE nick = %s
+                """, (new_score, new_score, damage, max_health, fire_rate,
+                    spawn_wait, level, xp_bar_value, health_bar_value, nick))
+            else:
+                cursor.execute("""
+                    UPDATE best_score SET
+                        last_score = %s,
+                        damage = %s, max_health = %s, fire_rate = %s,
+                        spawn_wait = %s, level = %s,
+                        xp_bar_value = %s, health_bar_value = %s
+                    WHERE nick = %s
+                """, (new_score, damage, max_health, fire_rate,
+                    spawn_wait, level, xp_bar_value, health_bar_value, nick))
         else:
-            # 🆕 Якщо ще немає такого гравця — додаємо
             cursor.execute("""
                 INSERT INTO best_score (
-                    nick, score, damage, max_health, fire_rate,
-                    spawn_wait, level, xp_bar_value, health_bar_value
-                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
-            """, (nick, new_score, damage, max_health, fire_rate, spawn_wait, level, xp_bar_value, health_bar_value))
+                    nick, score, last_score, damage, max_health,
+                    fire_rate, spawn_wait, level,
+                    xp_bar_value, health_bar_value
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            """, (nick, new_score, new_score, damage, max_health,
+                fire_rate, spawn_wait, level, xp_bar_value, health_bar_value))
 
         conn.commit()
         conn.close()
         return jsonify({"status": "saved"}), 200
+
 
 
 
@@ -148,24 +164,33 @@ def create_app():
         conn = get_connection()
         cursor = conn.cursor()
         cursor.execute("""
-            SELECT score, damage, max_health, fire_rate, spawn_wait, level
+            SELECT score, last_score, damage, max_health, fire_rate,
+                spawn_wait, level, xp_bar_value, health_bar_value
             FROM best_score WHERE nick = %s
         """, (nick,))
         row = cursor.fetchone()
         conn.close()
 
         if row:
-            keys = [
-                "score", "damage", "max_health", "fire_rate",
-                "spawn_wait", "level", "xp_bar_value", "health_bar_value"
-            ]
+            (
+                score, last_score, damage, max_health, fire_rate,
+                spawn_wait, level, xp_bar_value, health_bar_value
+            ) = row
 
-            return jsonify(dict(zip(keys, row))), 200
+            return jsonify({
+                "score": last_score,
+                "best_score": score,
+                "damage": damage,
+                "max_health": max_health,
+                "fire_rate": fire_rate,
+                "spawn_wait": spawn_wait,
+                "level": level,
+                "xp_bar_value": xp_bar_value,
+                "health_bar_value": health_bar_value
+            }), 200
         else:
             return jsonify({"error": "Not found"}), 404
 
-    with app.app_context():
-        init_db()
 
     return app
 
