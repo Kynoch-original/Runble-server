@@ -112,26 +112,19 @@ def create_app():
 
         conn = get_connection()
         cursor = conn.cursor()
-        cursor.execute("SELECT score FROM best_score WHERE nick = %s", (nick,))
-        row = cursor.fetchone()
+        cursor.execute("SELECT 1 FROM best_score WHERE nick = %s", (nick,))
+        exists = cursor.fetchone()
 
-        if row:
-            current_score = row[0]
-            if new_score > current_score:
-                cursor.execute("""
-                    UPDATE best_score SET
-                        score = %s, damage = %s, max_health = %s, fire_rate = %s,
-                        spawn_wait = %s, level = %s, xp_bar_value = %s, health_bar_value = %s
-                    WHERE nick = %s
-                """, (new_score, damage, max_health, fire_rate, spawn_wait, level, xp_bar_value, health_bar_value, nick))
-            else:
-                cursor.execute("""
-                    UPDATE best_score SET
-                        damage = %s, max_health = %s, fire_rate = %s,
-                        spawn_wait = %s, level = %s, xp_bar_value = %s, health_bar_value = %s
-                    WHERE nick = %s
-                """, (damage, max_health, fire_rate, spawn_wait, level, xp_bar_value, health_bar_value, nick))
+        if exists:
+            # 🔁 Завжди оновлюємо всі поля, навіть якщо score менший
+            cursor.execute("""
+                UPDATE best_score SET
+                    score = %s, damage = %s, max_health = %s, fire_rate = %s,
+                    spawn_wait = %s, level = %s, xp_bar_value = %s, health_bar_value = %s
+                WHERE nick = %s
+            """, (new_score, damage, max_health, fire_rate, spawn_wait, level, xp_bar_value, health_bar_value, nick))
         else:
+            # 🆕 Якщо ще немає такого гравця — додаємо
             cursor.execute("""
                 INSERT INTO best_score (
                     nick, score, damage, max_health, fire_rate,
@@ -142,6 +135,7 @@ def create_app():
         conn.commit()
         conn.close()
         return jsonify({"status": "saved"}), 200
+
 
 
     @app.route("/load_progress", methods=["POST"])
