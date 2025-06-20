@@ -107,6 +107,8 @@ def create_app():
         fire_rate = data.get("fire_rate", 0.5)
         spawn_wait = data.get("spawn_wait", 1.0)
         level = data.get("level", 1)
+        xp_bar_value = data.get("xp_bar_value", 0.0)
+        health_bar_value = data.get("health_bar_value", 0.0)
 
         conn = get_connection()
         cursor = conn.cursor()
@@ -118,33 +120,29 @@ def create_app():
             if new_score > current_score:
                 cursor.execute("""
                     UPDATE best_score SET
-                        score = %s,
-                        damage = %s,
-                        max_health = %s,
-                        fire_rate = %s,
-                        spawn_wait = %s,
-                        level = %s
+                        score = %s, damage = %s, max_health = %s, fire_rate = %s,
+                        spawn_wait = %s, level = %s, xp_bar_value = %s, health_bar_value = %s
                     WHERE nick = %s
-                """, (new_score, damage, max_health, fire_rate, spawn_wait, level, nick))
+                """, (new_score, damage, max_health, fire_rate, spawn_wait, level, xp_bar_value, health_bar_value, nick))
             else:
                 cursor.execute("""
                     UPDATE best_score SET
-                        damage = %s,
-                        max_health = %s,
-                        fire_rate = %s,
-                        spawn_wait = %s,
-                        level = %s
+                        damage = %s, max_health = %s, fire_rate = %s,
+                        spawn_wait = %s, level = %s, xp_bar_value = %s, health_bar_value = %s
                     WHERE nick = %s
-                """, (damage, max_health, fire_rate, spawn_wait, level, nick))
+                """, (damage, max_health, fire_rate, spawn_wait, level, xp_bar_value, health_bar_value, nick))
         else:
             cursor.execute("""
-                INSERT INTO best_score (score, damage, max_health, fire_rate, spawn_wait, level, nick)
-                VALUES (%s, %s, %s, %s, %s, %s, %s)
-            """, (new_score, damage, max_health, fire_rate, spawn_wait, level, nick))
+                INSERT INTO best_score (
+                    nick, score, damage, max_health, fire_rate,
+                    spawn_wait, level, xp_bar_value, health_bar_value
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+            """, (nick, new_score, damage, max_health, fire_rate, spawn_wait, level, xp_bar_value, health_bar_value))
 
         conn.commit()
         conn.close()
         return jsonify({"status": "saved"}), 200
+
 
     @app.route("/load_progress", methods=["POST"])
     def load_progress():
@@ -163,7 +161,11 @@ def create_app():
         conn.close()
 
         if row:
-            keys = ["score", "damage", "max_health", "fire_rate", "spawn_wait", "level"]
+            keys = [
+                "score", "damage", "max_health", "fire_rate",
+                "spawn_wait", "level", "xp_bar_value", "health_bar_value"
+            ]
+
             return jsonify(dict(zip(keys, row))), 200
         else:
             return jsonify({"error": "Not found"}), 404

@@ -1,7 +1,7 @@
 from ml_agent import QLearningAgent
 import random
 
-actions = ["up", "down", "left", "right", "attack", "wait"]
+actions = ["up", "down", "left", "right", "attack"]
 agent = QLearningAgent(actions, epsilon=0.2)
 
 def generate_state():
@@ -12,28 +12,33 @@ def generate_state():
 def distance(state):
     return (state[0] ** 2 + state[1] ** 2) ** 0.5
 
-for episode in range(20000):
+EPISODES = 100_000
+
+for episode in range(EPISODES):
     state = generate_state()
+    dx, dy = state
+    dist_before = distance(state)
+
     action = random.choice(actions)
 
-    dx, dy = state
+    # Симуляція руху
     if action == "left": dx -= 10
-    if action == "right": dx += 10
-    if action == "up": dy -= 10
-    if action == "down": dy += 10
+    elif action == "right": dx += 10
+    elif action == "up": dy -= 10
+    elif action == "down": dy += 10
 
     next_state = [dx, dy]
-    dist_now = distance(state)
-    dist_next = distance(next_state)
+    dist_after = distance(next_state)
 
+    # Ревард функція
     if action == "attack":
-        reward = 5 if dist_now < 100 else -2
-    elif dist_next < dist_now:
-        reward = 1  
+        reward = 10 if dist_before < 100 else -5
+    elif dist_after < dist_before:
+        reward = 1
     else:
-        reward = -1  
+        reward = -0.5
 
     agent.learn(state, action, reward, next_state, actions)
 
 agent.save_q_table()
-print("✅ Q-table trained and saved")
+print(f"✅ Q-table trained and saved after {EPISODES} episodes")
