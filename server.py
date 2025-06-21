@@ -22,62 +22,30 @@ def create_app():
     app = Flask(__name__)
     CORS(app)
 
-    def init_db():
-        conn = get_connection()
-        cursor = conn.cursor()
-
-        # Створюємо таблицю якщо її ще нема
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS best_score (
-                nick TEXT PRIMARY KEY,
-                score INTEGER,
-                damage INTEGER DEFAULT 1,
-                max_health INTEGER DEFAULT 100,
-                fire_rate REAL DEFAULT 0.5,
-                spawn_wait REAL DEFAULT 1.0
-            )
-        """)
-
-        # Додаємо колонку level, якщо її ще нема
-        cursor.execute("""
-            DO $$
-            BEGIN
-                IF NOT EXISTS (
-                    SELECT 1 FROM information_schema.columns 
-                    WHERE table_name='best_score' AND column_name='level'
-                ) THEN
-                    ALTER TABLE best_score ADD COLUMN level INTEGER DEFAULT 1;
-                END IF;
-            END
-            $$;
-        """)
-
-        conn.commit()
-        conn.close()
-
     @app.route("/score", methods=["POST"])
     def post_score():
         data = request.get_json()
+        user_id = data.get("user_id")
         nick = data.get("nick")
         score = data.get("score")
 
-        if not nick or score is None:
-            return jsonify({"status": "error", "message": "Missing nickname or score"}), 400
+        if not user_id or score is None:
+            return jsonify({"status": "error", "message": "Missing user_id or score"}), 400
 
         conn = get_connection()
         cursor = conn.cursor()
-        cursor.execute("SELECT score FROM best_score WHERE nick = %s", (nick,))
+        cursor.execute("SELECT score FROM best_score WHERE user_id = %s", (user_id,))
         row = cursor.fetchone()
 
         if row:
             if score > row[0]:
-                cursor.execute("UPDATE best_score SET score = %s WHERE nick = %s", (score, nick))
+                cursor.execute("UPDATE best_score SET score = %s WHERE user_id = %s", (score, user_id))
         else:
             cursor.execute("""
-                INSERT INTO best_score (nick, score)
-                VALUES (%s, %s)
-                ON CONFLICT (nick) DO NOTHING
-            """, (nick, score))
+                INSERT INTO best_score (user_id, nick, score, last_score)
+                VALUES (%s, %s, %s, %s)
+                ON CONFLICT (user_id) DO NOTHING
+            """, (user_id, nick, score, score))
 
         conn.commit()
         conn.close()
@@ -87,20 +55,32 @@ def create_app():
     def get_top_scores():
         conn = get_connection()
         cursor = conn.cursor()
-        cursor.execute("SELECT nick, score FROM best_score ORDER BY score DESC LIMIT 5")
-        results = cursor.fetchall()
+        cursor.execute("""
+            SELECT user_id, nick, score FROM best_score
+            ORDER BY score DESC
+            LIMIT 5
+        """)
+        rows = cursor.fetchall()
         conn.close()
 
-        top_scores = [{"nickname": nick, "score": score} for nick, score in results]
-        return jsonify(top_scores), 200
+        top_scores = []
+        for row in rows:
+            top_scores.append({
+                "user_id": row[0],
+                "nick": row[1],
+                "score": row[2]
+            })
+
+        return jsonify({"top_scores": top_scores}), 200
 
     @app.route("/save_progress", methods=["POST"])
     def save_progress():
         data = request.get_json()
-        nick = data.get("nick")
-        if not nick:
-            return jsonify({"error": "Missing nick"}), 400
+        user_id = data.get("user_id")
+        if not user_id:
+            return jsonify({"error": "Missing user_id"}), 400
 
+        nick = data.get("nick")
         new_score = data.get("score", 0)
         damage = data.get("damage", 1)
         max_health = data.get("max_health", 100)
@@ -112,7 +92,7 @@ def create_app():
 
         conn = get_connection()
         cursor = conn.cursor()
-        cursor.execute("SELECT score FROM best_score WHERE nick = %s", (nick,))
+        cursor.execute("SELECT score FROM best_score WHERE user_id = %s", (user_id,))
         row = cursor.fetchone()
 
         if row:
@@ -123,58 +103,57 @@ def create_app():
                         score = %s, last_score = %s,
                         damage = %s, max_health = %s, fire_rate = %s,
                         spawn_wait = %s, level = %s,
-                        xp_bar_value = %s, health_bar_value = %s
-                    WHERE nick = %s
+                        xp_bar_value = %s, health_bar_value = %s,
+                        nick = %s
+                    WHERE user_id = %s
                 """, (new_score, new_score, damage, max_health, fire_rate,
-                    spawn_wait, level, xp_bar_value, health_bar_value, nick))
+                      spawn_wait, level, xp_bar_value, health_bar_value, nick, user_id))
             else:
                 cursor.execute("""
                     UPDATE best_score SET
                         last_score = %s,
                         damage = %s, max_health = %s, fire_rate = %s,
                         spawn_wait = %s, level = %s,
-                        xp_bar_value = %s, health_bar_value = %s
-                    WHERE nick = %s
+                        xp_bar_value = %s, health_bar_value = %s,
+                        nick = %s
+                    WHERE user_id = %s
                 """, (new_score, damage, max_health, fire_rate,
-                    spawn_wait, level, xp_bar_value, health_bar_value, nick))
+                      spawn_wait, level, xp_bar_value, health_bar_value, nick, user_id))
         else:
             cursor.execute("""
                 INSERT INTO best_score (
-                    nick, score, last_score, damage, max_health,
+                    user_id, nick, score, last_score, damage, max_health,
                     fire_rate, spawn_wait, level,
                     xp_bar_value, health_bar_value
-                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-            """, (nick, new_score, new_score, damage, max_health,
-                fire_rate, spawn_wait, level, xp_bar_value, health_bar_value))
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            """, (user_id, nick, new_score, new_score, damage, max_health,
+                  fire_rate, spawn_wait, level, xp_bar_value, health_bar_value))
 
         conn.commit()
         conn.close()
         return jsonify({"status": "saved"}), 200
 
-
-
-
     @app.route("/load_progress", methods=["POST"])
     def load_progress():
         data = request.get_json()
-        nick = data.get("nick")
-        if not nick:
-            return jsonify({"error": "Missing nick"}), 400
+        user_id = data.get("user_id")
+        if not user_id:
+            return jsonify({"error": "Missing user_id"}), 400
 
         conn = get_connection()
         cursor = conn.cursor()
         cursor.execute("""
             SELECT score, last_score, damage, max_health, fire_rate,
-                spawn_wait, level, xp_bar_value, health_bar_value
-            FROM best_score WHERE nick = %s
-        """, (nick,))
+                spawn_wait, level, xp_bar_value, health_bar_value, nick
+            FROM best_score WHERE user_id = %s
+        """, (user_id,))
         row = cursor.fetchone()
         conn.close()
 
         if row:
             (
                 score, last_score, damage, max_health, fire_rate,
-                spawn_wait, level, xp_bar_value, health_bar_value
+                spawn_wait, level, xp_bar_value, health_bar_value, nick
             ) = row
 
             return jsonify({
@@ -186,11 +165,25 @@ def create_app():
                 "spawn_wait": spawn_wait,
                 "level": level,
                 "xp_bar_value": xp_bar_value,
-                "health_bar_value": health_bar_value
+                "health_bar_value": health_bar_value,
+                "nick": nick
             }), 200
         else:
             return jsonify({"error": "Not found"}), 404
 
+    @app.route("/reset_progress", methods=["DELETE"])
+    def reset_progress():
+        user_id = request.args.get("user_id")
+        if not user_id:
+            return jsonify({"error": "Missing user_id"}), 400
+
+        conn = get_connection()
+        cursor = conn.cursor()
+        cursor.execute("DELETE FROM best_score WHERE user_id = %s", (user_id,))
+        conn.commit()
+        conn.close()
+
+        return jsonify({"status": "reset"}), 200
 
     return app
 
