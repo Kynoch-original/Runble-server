@@ -34,19 +34,19 @@ def post_score():
 
     conn = get_db_connection()
     cur = conn.cursor()
-    cur.execute("SELECT best_score FROM player_progress WHERE nickname = %s AND user_id = %s", (nick, user_id))
+    cur.execute("SELECT best_score FROM player_progress WHERE nick = %s AND user_id = %s", (nick, user_id))
     row = cur.fetchone()
 
     if row:
         best_score = row[0]
         if score > best_score:
-            cur.execute("UPDATE player_progress SET best_score = %s, last_score = %s WHERE nickname = %s AND user_id = %s",
+            cur.execute("UPDATE player_progress SET best_score = %s, last_score = %s WHERE nick = %s AND user_id = %s",
                         (score, score, nick, user_id))
         else:
-            cur.execute("UPDATE player_progress SET last_score = %s WHERE nickname = %s AND user_id = %s",
+            cur.execute("UPDATE player_progress SET last_score = %s WHERE nick = %s AND user_id = %s",
                         (score, nick, user_id))
     else:
-        cur.execute("INSERT INTO player_progress (nickname, best_score, last_score, user_id) VALUES (%s, %s, %s, %s)",
+        cur.execute("INSERT INTO player_progress (nick, best_score, last_score, user_id) VALUES (%s, %s, %s, %s)",
                     (nick, score, score, user_id))
 
     conn.commit()
@@ -61,13 +61,13 @@ def get_scores():
     cur = conn.cursor()
     try:
         cur.execute("""
-            SELECT nickname, score 
+            SELECT nick, score 
             FROM best_score 
             WHERE nick IS NOT NULL AND score IS NOT NULL
             ORDER BY score DESC LIMIT 5
         """)
         rows = cur.fetchall()
-        result = [{"nickname": row[0], "score": row[1]} for row in rows]
+        result = [{"nick": row[0], "score": row[1]} for row in rows]
         return jsonify(result)
     except Exception as e:
         print("❌ Server error in get_scores:", e)
@@ -91,21 +91,21 @@ def save_progress():
     health_bar_value = data.get("health_bar_value")
 
     if not nick or not user_id:
-        return jsonify({"error": "Missing nickname or user_id"}), 400
+        return jsonify({"error": "Missing nick or user_id"}), 400
 
     conn = get_db_connection()
     cur = conn.cursor()
-    cur.execute("SELECT * FROM player_progress WHERE nickname = %s AND user_id = %s", (nick, user_id))
+    cur.execute("SELECT * FROM player_progress WHERE nick = %s AND user_id = %s", (nick, user_id))
     if cur.fetchone():
         cur.execute("""
             UPDATE player_progress SET score = %s, level = %s, damage = %s, max_health = %s,
             fire_rate = %s, spawn_wait = %s, xp_bar_value = %s, health_bar_value = %s, last_score = %s
-            WHERE nickname = %s AND user_id = %s
+            WHERE nick = %s AND user_id = %s
         """, (score, level, damage, max_health, fire_rate, spawn_wait,
               xp_bar_value, health_bar_value, score, nick, user_id))
     else:
         cur.execute("""
-            INSERT INTO player_progress (nickname, user_id, score, level, damage, max_health,
+            INSERT INTO player_progress (nick, user_id, score, level, damage, max_health,
             fire_rate, spawn_wait, xp_bar_value, health_bar_value, best_score, last_score)
             VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
         """, (nick, user_id, score, level, damage, max_health, fire_rate, spawn_wait,
@@ -124,13 +124,13 @@ def load_progress():
     user_id = data.get("user_id")
 
     if not nick or not user_id:
-        return jsonify({"error": "Missing nickname or user_id"}), 400
+        return jsonify({"error": "Missing nick or user_id"}), 400
 
     conn = get_db_connection()
     cur = conn.cursor()
     cur.execute("""
         SELECT score, level, damage, max_health, fire_rate, spawn_wait, xp_bar_value, health_bar_value 
-        FROM player_progress WHERE nickname = %s AND user_id = %s
+        FROM player_progress WHERE nick = %s AND user_id = %s
     """, (nick, user_id))
     row = cur.fetchone()
     cur.close()
@@ -155,7 +155,7 @@ def has_progress():
     cur = conn.cursor()
     cur.execute("""
         SELECT 1 FROM player_progress 
-        WHERE nickname = %s AND user_id = %s LIMIT 1
+        WHERE nick = %s AND user_id = %s LIMIT 1
     """, (nick, user_id))
     result = cur.fetchone()
     cur.close()
