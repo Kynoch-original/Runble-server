@@ -1,193 +1,151 @@
-import os
-import psycopg2
 from flask import Flask, request, jsonify
 from flask_cors import CORS
+import psycopg2
+import os
 
-DB_HOST = os.environ.get("DB_HOST")
-DB_NAME = os.environ.get("DB_NAME")
-DB_USER = os.environ.get("DB_USER")
-DB_PASS = os.environ.get("DB_PASS")
-DB_PORT = os.environ.get("DB_PORT", 5432)
+app = Flask(__name__)
+CORS(app)
 
-def get_connection():
+def get_db_connection():
     return psycopg2.connect(
-        host=DB_HOST,
-        dbname=DB_NAME,
-        user=DB_USER,
-        password=DB_PASS,
-        port=DB_PORT
+        host=os.environ.get("DB_HOST"),
+        database=os.environ.get("DB_NAME"),
+        user=os.environ.get("DB_USER"),
+        password=os.environ.get("DB_PASSWORD"),
+        port=os.environ.get("DB_PORT")
     )
 
-def create_app():
-    app = Flask(__name__)
-    CORS(app)
+@app.route("/score", methods=["POST"])
+def post_score():
+    data = request.get_json()
+    nick = data.get("nick")
+    score = data.get("score")
+    user_id = data.get("user_id")
 
-    @app.route("/score", methods=["POST"])
-    def post_score():
-        data = request.get_json()
-        user_id = data.get("user_id")
-        nick = data.get("nick")
-        score = data.get("score")
+    if not nick or score is None or not user_id:
+        return jsonify({"error": "Missing fields"}), 400
 
-        if not user_id or score is None:
-            return jsonify({"status": "error", "message": "Missing user_id or score"}), 400
+    conn = get_db_connection()
+    cur = conn.cursor()
+    cur.execute("SELECT best_score FROM player_progress WHERE nickname = %s AND user_id = %s", (nick, user_id))
+    row = cur.fetchone()
 
-        conn = get_connection()
-        cursor = conn.cursor()
-        cursor.execute("SELECT score FROM best_score WHERE user_id = %s", (user_id,))
-        row = cursor.fetchone()
-
-        if row:
-            if score > row[0]:
-                cursor.execute("UPDATE best_score SET score = %s WHERE user_id = %s", (score, user_id))
+    if row:
+        best_score = row[0]
+        if score > best_score:
+            cur.execute("UPDATE player_progress SET best_score = %s, last_score = %s WHERE nickname = %s AND user_id = %s",
+                        (score, score, nick, user_id))
         else:
-            cursor.execute("""
-                INSERT INTO best_score (user_id, nick, score, last_score)
-                VALUES (%s, %s, %s, %s)
-                ON CONFLICT (user_id) DO NOTHING
-            """, (user_id, nick, score, score))
+            cur.execute("UPDATE player_progress SET last_score = %s WHERE nickname = %s AND user_id = %s",
+                        (score, nick, user_id))
+    else:
+        cur.execute("INSERT INTO player_progress (nickname, best_score, last_score, user_id) VALUES (%s, %s, %s, %s)",
+                    (nick, score, score, user_id))
 
-        conn.commit()
-        conn.close()
-        return jsonify({"status": "ok"})
+    conn.commit()
+    cur.close()
+    conn.close()
 
-    @app.route("/scores", methods=["GET"])
-    def get_top_scores():
-        conn = get_connection()
-        cursor = conn.cursor()
-        cursor.execute("""
-            SELECT user_id, nick, score FROM best_score
-            ORDER BY score DESC
-            LIMIT 5
-        """)
-        rows = cursor.fetchall()
-        conn.close()
+    return jsonify({"message": "Score saved successfully"})
 
-        top_scores = []
-        for row in rows:
-            top_scores.append({
-                "user_id": row[0],
-                "nick": row[1],
-                "score": row[2]
-            })
+@app.route("/scores", methods=["GET"])
+def get_scores():
+    conn = get_db_connection()
+    cur = conn.cursor()
+    cur.execute("SELECT nickname, best_score FROM player_progress ORDER BY best_score DESC LIMIT 5")
+    rows = cur.fetchall()
+    cur.close()
+    conn.close()
 
-        return jsonify({"top_scores": top_scores}), 200
+    result = [{"nickname": row[0], "score": row[1]} for row in rows]
+    return jsonify(result)
 
-    @app.route("/save_progress", methods=["POST"])
-    def save_progress():
-        data = request.get_json()
-        user_id = data.get("user_id")
-        if not user_id:
-            return jsonify({"error": "Missing user_id"}), 400
+@app.route("/save_progress", methods=["POST"])
+def save_progress():
+    data = request.get_json()
+    nick = data.get("nick")
+    user_id = data.get("user_id")
+    score = data.get("score")
+    level = data.get("level")
+    damage = data.get("damage")
+    max_health = data.get("max_health")
+    fire_rate = data.get("fire_rate")
+    spawn_wait = data.get("spawn_wait")
+    xp_bar_value = data.get("xp_bar_value")
+    health_bar_value = data.get("health_bar_value")
 
-        nick = data.get("nick")
-        new_score = data.get("score", 0)
-        damage = data.get("damage", 1)
-        max_health = data.get("max_health", 100)
-        fire_rate = data.get("fire_rate", 0.5)
-        spawn_wait = data.get("spawn_wait", 1.0)
-        level = data.get("level", 1)
-        xp_bar_value = data.get("xp_bar_value", 0.0)
-        health_bar_value = data.get("health_bar_value", 0.0)
+    if not nick or not user_id:
+        return jsonify({"error": "Missing nickname or user_id"}), 400
 
-        conn = get_connection()
-        cursor = conn.cursor()
-        cursor.execute("SELECT score FROM best_score WHERE user_id = %s", (user_id,))
-        row = cursor.fetchone()
+    conn = get_db_connection()
+    cur = conn.cursor()
+    cur.execute("SELECT * FROM player_progress WHERE nickname = %s AND user_id = %s", (nick, user_id))
+    if cur.fetchone():
+        cur.execute("""
+            UPDATE player_progress SET score = %s, level = %s, damage = %s, max_health = %s,
+            fire_rate = %s, spawn_wait = %s, xp_bar_value = %s, health_bar_value = %s, last_score = %s
+            WHERE nickname = %s AND user_id = %s
+        """, (score, level, damage, max_health, fire_rate, spawn_wait,
+              xp_bar_value, health_bar_value, score, nick, user_id))
+    else:
+        cur.execute("""
+            INSERT INTO player_progress (nickname, user_id, score, level, damage, max_health,
+            fire_rate, spawn_wait, xp_bar_value, health_bar_value, best_score, last_score)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+        """, (nick, user_id, score, level, damage, max_health, fire_rate, spawn_wait,
+              xp_bar_value, health_bar_value, score, score))
 
-        if row:
-            current_best = row[0]
-            if new_score > current_best:
-                cursor.execute("""
-                    UPDATE best_score SET
-                        score = %s, last_score = %s,
-                        damage = %s, max_health = %s, fire_rate = %s,
-                        spawn_wait = %s, level = %s,
-                        xp_bar_value = %s, health_bar_value = %s,
-                        nick = %s
-                    WHERE user_id = %s
-                """, (new_score, new_score, damage, max_health, fire_rate,
-                      spawn_wait, level, xp_bar_value, health_bar_value, nick, user_id))
-            else:
-                cursor.execute("""
-                    UPDATE best_score SET
-                        last_score = %s,
-                        damage = %s, max_health = %s, fire_rate = %s,
-                        spawn_wait = %s, level = %s,
-                        xp_bar_value = %s, health_bar_value = %s,
-                        nick = %s
-                    WHERE user_id = %s
-                """, (new_score, damage, max_health, fire_rate,
-                      spawn_wait, level, xp_bar_value, health_bar_value, nick, user_id))
-        else:
-            cursor.execute("""
-                INSERT INTO best_score (
-                    user_id, nick, score, last_score, damage, max_health,
-                    fire_rate, spawn_wait, level,
-                    xp_bar_value, health_bar_value
-                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-            """, (user_id, nick, new_score, new_score, damage, max_health,
-                  fire_rate, spawn_wait, level, xp_bar_value, health_bar_value))
+    conn.commit()
+    cur.close()
+    conn.close()
 
-        conn.commit()
-        conn.close()
-        return jsonify({"status": "saved"}), 200
+    return jsonify({"message": "Progress saved"})
 
-    @app.route("/load_progress", methods=["POST"])
-    def load_progress():
-        data = request.get_json()
-        user_id = data.get("user_id")
-        if not user_id:
-            return jsonify({"error": "Missing user_id"}), 400
+@app.route("/load_progress", methods=["POST"])
+def load_progress():
+    data = request.get_json()
+    nick = data.get("nick")
+    user_id = data.get("user_id")
 
-        conn = get_connection()
-        cursor = conn.cursor()
-        cursor.execute("""
-            SELECT score, last_score, damage, max_health, fire_rate,
-                spawn_wait, level, xp_bar_value, health_bar_value, nick
-            FROM best_score WHERE user_id = %s
-        """, (user_id,))
-        row = cursor.fetchone()
-        conn.close()
+    if not nick or not user_id:
+        return jsonify({"error": "Missing nickname or user_id"}), 400
 
-        if row:
-            (
-                score, last_score, damage, max_health, fire_rate,
-                spawn_wait, level, xp_bar_value, health_bar_value, nick
-            ) = row
+    conn = get_db_connection()
+    cur = conn.cursor()
+    cur.execute("""
+        SELECT score, level, damage, max_health, fire_rate, spawn_wait, xp_bar_value, health_bar_value 
+        FROM player_progress WHERE nickname = %s AND user_id = %s
+    """, (nick, user_id))
+    row = cur.fetchone()
+    cur.close()
+    conn.close()
 
-            return jsonify({
-                "score": last_score,
-                "best_score": score,
-                "damage": damage,
-                "max_health": max_health,
-                "fire_rate": fire_rate,
-                "spawn_wait": spawn_wait,
-                "level": level,
-                "xp_bar_value": xp_bar_value,
-                "health_bar_value": health_bar_value,
-                "nick": nick
-            }), 200
-        else:
-            return jsonify({"error": "Not found"}), 404
+    if row:
+        keys = ["score", "level", "damage", "max_health", "fire_rate", "spawn_wait", "xp_bar_value", "health_bar_value"]
+        return jsonify(dict(zip(keys, row)))
+    else:
+        return jsonify({"error": "No progress found"}), 404
 
-    @app.route("/reset_progress", methods=["DELETE"])
-    def reset_progress():
-        user_id = request.args.get("user_id")
-        if not user_id:
-            return jsonify({"error": "Missing user_id"}), 400
+@app.route("/has_progress", methods=["POST"])
+def has_progress():
+    data = request.get_json()
+    nick = data.get("nick", "")
+    user_id = data.get("user_id", "")
 
-        conn = get_connection()
-        cursor = conn.cursor()
-        cursor.execute("DELETE FROM best_score WHERE user_id = %s", (user_id,))
-        conn.commit()
-        conn.close()
+    if not nick or not user_id:
+        return jsonify({"has_progress": False}), 400
 
-        return jsonify({"status": "reset"}), 200
+    conn = get_db_connection()
+    cur = conn.cursor()
+    cur.execute("""
+        SELECT 1 FROM player_progress 
+        WHERE nickname = %s AND user_id = %s LIMIT 1
+    """, (nick, user_id))
+    result = cur.fetchone()
+    cur.close()
+    conn.close()
 
-    return app
-
-app = create_app()
+    return jsonify({"has_progress": bool(result)}), 200
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
