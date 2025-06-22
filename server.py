@@ -54,10 +54,10 @@ def get_scores():
     cur = conn.cursor()
     try:
         cur.execute("""
-            SELECT nickname, best_score 
-            FROM player_progress 
-            WHERE nickname IS NOT NULL AND best_score IS NOT NULL
-            ORDER BY best_score DESC LIMIT 5
+            SELECT nickname, score 
+            FROM best_score 
+            WHERE nick IS NOT NULL AND score IS NOT NULL
+            ORDER BY score DESC LIMIT 5
         """)
         rows = cur.fetchall()
         result = [{"nickname": row[0], "score": row[1]} for row in rows]
@@ -68,7 +68,7 @@ def get_scores():
     finally:
         cur.close()
         conn.close()
-        
+
 @app.route("/save_progress", methods=["POST"])
 def save_progress():
     data = request.get_json()
