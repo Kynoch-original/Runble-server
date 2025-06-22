@@ -7,11 +7,18 @@ app = Flask(__name__)
 CORS(app)
 
 def get_db_connection():
+    print("🟡 DB config:",
+          os.environ.get("DB_HOST"),
+          os.environ.get("DB_USER"),
+          os.environ.get("DB_NAME"),
+          os.environ.get("DB_PORT"),
+          os.environ.get("DB_PASS"))  # додай для дебагу
+
     return psycopg2.connect(
         host=os.environ.get("DB_HOST"),
         database=os.environ.get("DB_NAME"),
         user=os.environ.get("DB_USER"),
-        password=os.environ.get("DB_PASSWORD"),
+        password=os.environ.get("DB_PASS"),
         port=os.environ.get("DB_PORT")
     )
 
