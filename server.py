@@ -81,6 +81,7 @@ def save_progress():
     data = request.get_json()
     nickname = data.get("nickname")
     user_id = data.get("user_id")
+    print("📦 upgrades =", data.get("upgrades"))
     upgrades = json.dumps(data.get("upgrades", {}))
     xp = data.get("xp_bar_value", 0)
     hp = data.get("health_bar_value", 0)
