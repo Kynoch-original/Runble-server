@@ -83,7 +83,11 @@ def save_progress():
     data = request.get_json()
     nickname = data.get("nickname")
     user_id = data.get("user_id")
-    print("📦 upgrades =", data.get("upgrades"))
+
+    # Якщо nickname не переданий або порожній — ставимо заглушку
+    if not nickname:
+        nickname = "unnamed"
+
     upgrades = json.dumps(data.get("upgrades", {}))
     xp = data.get("xp_bar_value", 0)
     hp = data.get("health_bar_value", 0)
@@ -91,7 +95,6 @@ def save_progress():
     conn = get_db_connection()
     cur = conn.cursor()
 
-    # Спроба оновити, або вставити якщо немає
     cur.execute("""
         INSERT INTO player_progress (nickname, user_id, upgrades, xp_bar_value, health_bar_value)
         VALUES (%s, %s, %s, %s, %s)
@@ -112,23 +115,49 @@ def save_progress():
 def load_progress():
     data = request.get_json()
     user_id = data.get("user_id")
-    conn = get_db_connection()
-    cur = conn.cursor()
-    cur.execute("SELECT nickname, upgrades, xp_bar_value, health_bar_value FROM player_progress WHERE user_id = %s", (user_id,))
-    row = cur.fetchone()
-    cur.close()
-    conn.close()
 
-    if row:
-        nickname, upgrades_json, xp, hp = row
-        return jsonify({
-            "nickname": nickname,
-            "upgrades": upgrades_json,
-            "xp_bar_value": xp,
-            "health_bar_value": hp
-        }), 200
-    else:
-        return jsonify({"error": "no_progress"}), 404
+    if not user_id:
+        return jsonify({"error": "user_id missing"}), 400
+
+    conn = None
+    cur = None
+
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT nickname, upgrades, xp_bar_value, health_bar_value 
+            FROM player_progress 
+            WHERE user_id = %s
+        """, (user_id,))
+        row = cur.fetchone()
+
+        if row:
+            nickname, upgrades_json, xp, hp = row
+            # Перевірка, чи upgrades — валідний JSON
+            try:
+                upgrades = json.loads(upgrades_json) if upgrades_json else {}
+            except Exception:
+                upgrades = {}
+            return jsonify({
+                "nickname": nickname,
+                "upgrades": upgrades,
+                "xp_bar_value": xp,
+                "health_bar_value": hp
+            }), 200
+        else:
+            return jsonify({"error": "no_progress"}), 404
+
+    except Exception as e:
+        print("❌ Error in load_progress:", e)
+        return jsonify({"error": "server_error"}), 500
+
+    finally:
+        if cur:
+            cur.close()
+        if conn:
+            conn.close()
+
 
 @app.route("/has_progress", methods=["POST"])
 def has_progress():
