@@ -52,14 +52,23 @@ def post_score():
 def get_scores():
     conn = get_db_connection()
     cur = conn.cursor()
-    cur.execute("SELECT nickname, best_score FROM player_progress ORDER BY best_score DESC LIMIT 5")
-    rows = cur.fetchall()
-    cur.close()
-    conn.close()
-
-    result = [{"nickname": row[0], "score": row[1]} for row in rows]
-    return jsonify(result)
-
+    try:
+        cur.execute("""
+            SELECT nickname, best_score 
+            FROM player_progress 
+            WHERE nickname IS NOT NULL AND best_score IS NOT NULL
+            ORDER BY best_score DESC LIMIT 5
+        """)
+        rows = cur.fetchall()
+        result = [{"nickname": row[0], "score": row[1]} for row in rows]
+        return jsonify(result)
+    except Exception as e:
+        print("❌ Server error in get_scores:", e)
+        return jsonify({"error": "Server error"}), 500
+    finally:
+        cur.close()
+        conn.close()
+        
 @app.route("/save_progress", methods=["POST"])
 def save_progress():
     data = request.get_json()
