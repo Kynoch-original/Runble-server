@@ -153,9 +153,9 @@ def has_progress():
 
     conn = get_db_connection()
     cur = conn.cursor()
-    cur.execute("""
-        SELECT 1 FROM player_progress 
-        WHERE nick = %s AND user_id = %s LIMIT 1
+    cur.execute(""" 
+            SELECT 1 FROM best_score
+            WHERE nick = %s AND user_id = %s LIMIT 11
     """, (nick, user_id))
     result = cur.fetchone()
     cur.close()
