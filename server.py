@@ -162,24 +162,35 @@ def load_progress():
 @app.route("/has_progress", methods=["POST"])
 def has_progress():
     data = request.get_json()
-    nick = data.get("nick", "")
-    user_id = data.get("user_id", "")
+    nick = data.get("nick", "").strip()
+    user_id = data.get("user_id", "").strip()
 
     if not nick or not user_id:
         return jsonify({"has_progress": False}), 400
 
-    conn = get_db_connection()
-    cur = conn.cursor()
-    cur.execute(""" 
+    conn = None
+    cur = None
+
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor()
+        cur.execute("""
             SELECT 1 FROM best_score
-            WHERE nick = %s AND user_id = %s LIMIT 11
-    """, (nick, user_id))
-    result = cur.fetchone()
-    cur.close()
-    conn.close()
+            WHERE nick = %s AND user_id = %s LIMIT 1
+        """, (nick, user_id))
+        result = cur.fetchone()
+        return jsonify({"has_progress": bool(result)}), 200
 
-    return jsonify({"has_progress": bool(result)}), 200
+    except Exception as e:
+        print("❌ Error in has_progress:", e)
+        return jsonify({"has_progress": False, "error": "server_error"}), 500
 
+    finally:
+        if cur:
+            cur.close()
+        if conn:
+            conn.close()
+            
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port)
