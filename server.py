@@ -22,14 +22,17 @@ def init_db():
     else:
         print("[📁] База вже існує.")
 
-@app.route("/score", methods=["GET"])
-def get_score():
+@app.route("/scores", methods=["GET"])
+def get_top_scores():
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
     cursor.execute("SELECT score FROM best_score WHERE id = 1")
     result = cursor.fetchone()
     conn.close()
-    return jsonify({"best_score": result[0] if result else 0})
+
+    # Формуємо список з одним топом
+    return jsonify([{"nickname": "Player", "score": result[0] if result else 0}])
+
 
 @app.route("/score", methods=["POST"])
 def post_score():
