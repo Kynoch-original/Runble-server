@@ -113,7 +113,7 @@ def load_progress():
 
     if row:
         return jsonify({
-            "nickname": row[0],
+            "nick": row[0],
             "score": row[1],
             "level": row[2],
             "damage": row[3],
