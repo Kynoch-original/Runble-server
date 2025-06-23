@@ -20,28 +20,33 @@ def get_db_connection():
 def post_score():
     try:
         data = request.get_json()
+        print("📥 Отримано дані:", data)
+
         nick = data.get("nick")
         score = data.get("score")
         user_id = data.get("user_id")
 
         if not nick or score is None or not user_id:
+            print("⛔ Відсутні обов'язкові поля")
             return jsonify({"error": "Missing fields"}), 400
 
         conn = get_db_connection()
         cur = conn.cursor()
-
         cur.execute("SELECT score FROM best_score WHERE nick = %s AND user_id = %s", (nick, user_id))
         row = cur.fetchone()
 
         if row:
             best_score = row[0]
             if score > best_score:
+                print("🔼 Оновлення нового рекорду:", score)
                 cur.execute("UPDATE best_score SET score = %s, last_score = %s WHERE nick = %s AND user_id = %s",
                             (score, score, nick, user_id))
             else:
+                print("📌 Запис лише останнього рахунку:", score)
                 cur.execute("UPDATE best_score SET last_score = %s WHERE nick = %s AND user_id = %s",
                             (score, nick, user_id))
         else:
+            print("🆕 Новий гравець:", nick)
             cur.execute("INSERT INTO best_score (nick, score, last_score, user_id) VALUES (%s, %s, %s, %s)",
                         (nick, score, score, user_id))
 
@@ -50,11 +55,29 @@ def post_score():
         conn.close()
 
         return jsonify({"message": "Score saved successfully"})
-
     except Exception as e:
-        import traceback
-        traceback.print_exc()  # Виведе повний traceback у консоль
-        return jsonify({"error": str(e)}), 500
+        print("❌ Error in /score:", e)
+        return jsonify({"error": "server_error"}), 500
+
+
+@app.route("/scores", methods=["GET"])
+def get_top_scores():
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor()
+
+        cur.execute("SELECT nick, score FROM best_score ORDER BY score DESC LIMIT 5")
+        rows = cur.fetchall()
+
+        cur.close()
+        conn.close()
+
+        scores = [{"nick": row[0], "score": row[1]} for row in rows]
+        return jsonify(scores)
+    except Exception as e:
+        print("❌ Помилка при отриманні топ-результатів:", e)
+        return jsonify({"error": "Internal server error"}), 500
+
 
 
 @app.route("/save_progress", methods=["POST"])
