@@ -18,36 +18,44 @@ def get_db_connection():
 
 @app.route("/score", methods=["POST"])
 def post_score():
-    data = request.get_json()
-    nick = data.get("nick")
-    score = data.get("score")
-    user_id = data.get("user_id")
+    try:
+        data = request.get_json()
+        nick = data.get("nick")
+        score = data.get("score")
+        user_id = data.get("user_id")
 
-    if not nick or score is None or not user_id:
-        return jsonify({"error": "Missing fields"}), 400
+        if not nick or score is None or not user_id:
+            return jsonify({"error": "Missing fields"}), 400
 
-    conn = get_db_connection()
-    cur = conn.cursor()
-    cur.execute("SELECT score FROM best_score WHERE nick = %s AND user_id = %s", (nick, user_id))
-    row = cur.fetchone()
+        conn = get_db_connection()
+        cur = conn.cursor()
 
-    if row:
-        best_score = row[0]
-        if score > best_score:
-            cur.execute("UPDATE best_score SET score = %s, last_score = %s WHERE nick = %s AND user_id = %s",
-                        (score, score, nick, user_id))
+        cur.execute("SELECT score FROM best_score WHERE nick = %s AND user_id = %s", (nick, user_id))
+        row = cur.fetchone()
+
+        if row:
+            best_score = row[0]
+            if score > best_score:
+                cur.execute("UPDATE best_score SET score = %s, last_score = %s WHERE nick = %s AND user_id = %s",
+                            (score, score, nick, user_id))
+            else:
+                cur.execute("UPDATE best_score SET last_score = %s WHERE nick = %s AND user_id = %s",
+                            (score, nick, user_id))
         else:
-            cur.execute("UPDATE best_score SET last_score = %s WHERE nick = %s AND user_id = %s",
-                        (score, nick, user_id))
-    else:
-        cur.execute("INSERT INTO best_score (nick, score, last_score, user_id) VALUES (%s, %s, %s, %s)",
-                    (nick, score, score, user_id))
+            cur.execute("INSERT INTO best_score (nick, score, last_score, user_id) VALUES (%s, %s, %s, %s)",
+                        (nick, score, score, user_id))
 
-    conn.commit()
-    cur.close()
-    conn.close()
+        conn.commit()
+        cur.close()
+        conn.close()
 
-    return jsonify({"message": "Score saved successfully"})
+        return jsonify({"message": "Score saved successfully"})
+
+    except Exception as e:
+        import traceback
+        traceback.print_exc()  # Виведе повний traceback у консоль
+        return jsonify({"error": str(e)}), 500
+
 
 @app.route("/save_progress", methods=["POST"])
 def save_progress():
