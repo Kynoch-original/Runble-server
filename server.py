@@ -1,85 +1,85 @@
 from flask import Flask, request, jsonify
-import sqlite3
 import os
 import psycopg2
 
 app = Flask(__name__)
-DB_PATH = "score.db"
-
-
 
 def get_db_connection():
     return psycopg2.connect(
-        dbname="runble_db",
-        user="runble_db_user",
-        password="SUJo613ghabacOOrpOe4rdPSdtn2Dsxy",
-        host="dpg-d17vc5vdiees73f7o79g-a",
-        port="5432"
+        dbname   = os.environ.get("PGDATABASE", "runble_db"),
+        user     = os.environ.get("PGUSER",     "runble_db_user"),
+        password = os.environ.get("PGPASSWORD", "SUJo613ghabacOOrpOe4rdPSdtn2Dsxy"),
+        host     = os.environ.get("PGHOST",     "dpg-d17vc5vdiees73f7o79g-a"),
+        port     = os.environ.get("PGPORT",     "5432"),
     )
 
 def init_db():
-    if not os.path.exists(DB_PATH):
-        conn = sqlite3.connect(DB_PATH)
-        cursor = conn.cursor()
-        cursor.execute('''
-            CREATE TABLE best_score (
-                id INTEGER PRIMARY KEY,
-                score INTEGER NOT NULL
-            )
-        ''')
-        cursor.execute("INSERT INTO best_score (id, score) VALUES (?, ?)", (1, 0))
-        conn.commit()
-        conn.close()
-        print("[✅] Локальна база створена.")
-    else:
-        print("[📁] База вже існує.")
+    """Створює таблицю best_score у Postgres, якщо її ще немає."""
+    conn = get_db_connection()
+    cur  = conn.cursor()
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS best_score (
+            nick       TEXT PRIMARY KEY,
+            score      INTEGER NOT NULL DEFAULT 0,
+            last_score INTEGER NOT NULL DEFAULT 0
+        );
+    """)
+    conn.commit()
+    cur.close()
+    conn.close()
+    print("[✅] Таблиця best_score готова в PostgreSQL.")
 
 @app.route("/scores", methods=["GET"])
 def get_top_scores():
+    """Повертає JSON-список з топ-5 гравців за полем score."""
     conn = get_db_connection()
-    cur = conn.cursor()
-    cur.execute("SELECT nick, score FROM best_score ORDER BY score DESC LIMIT 5")
+    cur  = conn.cursor()
+    cur.execute("""
+        SELECT nick, score
+          FROM best_score
+         ORDER BY score DESC
+         LIMIT 5
+    """)
     rows = cur.fetchall()
     cur.close()
     conn.close()
 
-    result = [{"nickname": row[0], "score": row[1]} for row in rows]
-    return jsonify(result)
-
-
+    return jsonify([{"nickname": nick, "score": score} for nick, score in rows])
 
 @app.route("/score", methods=["POST"])
 def post_score():
-    data = request.get_json()
-    nick = data.get("nick")
-    score = data.get("score")
+    """
+    Приймає JSON: {"nick": "...", "score": N}
+    Вставляє новий запис або оновлює існуючий:
+      - score = max(old_score, new_score)
+      - last_score = new_score
+    """
+    data = request.get_json(silent=True)
+    if not data:
+        return jsonify({"error": "Invalid JSON"}), 400
 
-    if not nick or score is None:
-        return jsonify({"error": "Missing fields"}), 400
+    nick  = data.get("nick")
+    score = data.get("score")
+    if not isinstance(nick, str) or not isinstance(score, (int, float)):
+        return jsonify({"error": "Missing or invalid fields"}), 400
 
     conn = get_db_connection()
-    cur = conn.cursor()
-
-    cur.execute("SELECT score FROM best_score WHERE nick = %s", (nick,))
-    row = cur.fetchone()
-
-    if row:
-        current_score = row[0]
-        if score > current_score:
-            cur.execute("UPDATE best_score SET score = %s, last_score = %s WHERE nick = %s", (score, score, nick))
-        else:
-            cur.execute("UPDATE best_score SET last_score = %s WHERE nick = %s", (score, nick))
-    else:
-        cur.execute("INSERT INTO best_score (nick, score, last_score) VALUES (%s, %s, %s)", (nick, score, score))
-
+    cur  = conn.cursor()
+    cur.execute("""
+        INSERT INTO best_score (nick, score, last_score)
+             VALUES (%s, %s, %s)
+        ON CONFLICT (nick) DO UPDATE
+           SET score      = GREATEST(best_score.score, EXCLUDED.score),
+               last_score = EXCLUDED.score;
+    """, (nick, int(score), int(score)))
     conn.commit()
     cur.close()
     conn.close()
 
     return jsonify({"message": "Score saved successfully"}), 200
 
-
 if __name__ == "__main__":
     init_db()
     port = int(os.environ.get("PORT", 5000))
+    # Включіть debug=False у продакшені!
     app.run(debug=True, host="0.0.0.0", port=port)
