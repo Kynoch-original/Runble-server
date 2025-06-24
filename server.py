@@ -1,9 +1,23 @@
 from flask import Flask, request, jsonify
 import sqlite3
 import os
+import psycopg2
 
 app = Flask(__name__)
 DB_PATH = "score.db"
+
+
+
+def get_db_connection():
+    return psycopg2.connect(
+        dbname="runble_db",
+        user="runble_db_user",
+        password="SUJo613ghabacOOrpOe4rdPSdtn2Dsxy",
+        host="dpg-d17vc5vdiees73f7o79g-a",
+        port="5432"
+    )
+
+
 
 def init_db():
     if not os.path.exists(DB_PATH):
