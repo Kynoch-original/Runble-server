@@ -1,12 +1,11 @@
 from flask import Flask, request, jsonify
-import sqlite3
+# import sqlite3
 import os
 import psycopg2
+import random
 
 app = Flask(__name__)
-DB_PATH = "score.db"
-
-
+#DB_PATH = "score.db"
 
 def get_db_connection():
     return psycopg2.connect(
@@ -16,25 +15,6 @@ def get_db_connection():
         host="dpg-d17vc5vdiees73f7o79g-a",
         port="5432"
     )
-
-
-
-def init_db():
-    if not os.path.exists(DB_PATH):
-        conn = sqlite3.connect(DB_PATH)
-        cursor = conn.cursor()
-        cursor.execute('''
-            CREATE TABLE best_score (
-                id INTEGER PRIMARY KEY,
-                score INTEGER NOT NULL
-            )
-        ''')
-        cursor.execute("INSERT INTO best_score (id, score) VALUES (?, ?)", (1, 0))
-        conn.commit()
-        conn.close()
-        print("[✅] Локальна база створена.")
-    else:
-        print("[📁] База вже існує.")
 
 @app.route("/scores", methods=["GET"])
 def get_top_scores():
@@ -80,8 +60,46 @@ def post_score():
 
     return jsonify({"message": "Score saved successfully"}), 200
 
+@app.route("/auth", methods=["POST"])
+def auth():
+    data = request.get_json()
+    nick = data.get("nick")
+    code = data.get("code")
+
+    if not nick:
+        return jsonify({"error": "Missing nick"}), 400
+
+    conn = get_db_connection()
+    cur = conn.cursor()
+
+    cur.execute("SELECT code FROM best_score WHERE nick = %s", (nick,))
+    row = cur.fetchone()
+
+    if row:
+        existing_code = row[0]
+        if str(code) == str(existing_code):
+            result = {"status": "ok", "message": "Access granted"}
+        else:
+            result = {"status": "error", "message": "wrong_code"}
+    else:
+        new_code = str(random.randint(1000, 9999))
+
+        cur.execute("""
+            INSERT INTO best_score (nick, score, last_score, code)
+            VALUES (%s, 0, 0, %s)
+        """, (nick, new_code))
+
+        result = {"status": "new_user", "code": new_code}
+
+    conn.commit()
+    cur.close()
+    conn.close()
+
+    return jsonify(result), 200
+
+
 
 if __name__ == "__main__":
-    init_db()
+    #nit_db()
     app.run(debug=True, host="127.0.0.1", port=5000)
 
