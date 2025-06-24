@@ -1,10 +1,11 @@
-from flask import Flask, request, jsonify
 import os
 import psycopg2
 from psycopg2.extras import RealDictCursor
+from flask import Flask, request, jsonify
 
 app = Flask(__name__)
 
+# Параметри з’єднання з БД через змінні середовища (або дефолтні)
 DB_NAME     = os.environ.get("PG_DB",       "runble_db")
 DB_USER     = os.environ.get("PG_USER",     "runble_db_user")
 DB_PASSWORD = os.environ.get("PG_PASSWORD", "SUJo613ghabacOOrpOe4rdPSdtn2Dsxy")
@@ -21,10 +22,7 @@ def get_db_connection():
     )
 
 def init_db():
-    """
-    Створюємо таблицю best_score в PostgreSQL, якщо вона ще не існує.
-    Поле nick — PRIMARY KEY, щоб можна було робити upsert по ніку.
-    """
+    """Створює таблицю best_score, якщо її ще немає."""
     conn = get_db_connection()
     cur = conn.cursor()
     cur.execute("""
@@ -38,14 +36,13 @@ def init_db():
     cur.close()
     conn.close()
 
-@app.before_first_request
-def setup():
-    init_db()
+# Ініціалізуємо БД відразу при старті модуля
+init_db()
 
 @app.route("/scores", methods=["GET"])
 def get_top_scores():
     """
-    Віддаємо топ-5 гравців за полем score.
+    Повертає JSON-масив з топ-5 гравців за полем score.
     """
     conn = get_db_connection()
     cur = conn.cursor(cursor_factory=RealDictCursor)
@@ -64,10 +61,9 @@ def get_top_scores():
 @app.route("/score", methods=["POST"])
 def post_score():
     """
-    Приймаємо JSON { "nick": "...", "score": 123 }.
-    Якщо гравець новий — додаємо.
-    Якщо існує — оновлюємо last_score (для історії) і оновлюємо score, 
-    тільки якщо новий > старого.
+    Приймає JSON { "nick": "...", "score": 123 }.
+    Якщо гравець новий — додає рядок.
+    Якщо існує — оновлює last_score і приймає новий score лише якщо він більший.
     """
     data = request.get_json(force=True)
     nick  = data.get("nick")
@@ -91,7 +87,5 @@ def post_score():
     return jsonify({"message": "Score saved successfully"}), 200
 
 if __name__ == "__main__":
-
-    init_db()
-    port = int(os.environ.get("PORT", 5000))
-    app.run(host="0.0.0.0", port=port, debug=True)
+    # Для локального запуску через flask run або python server.py
+    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)), debug=True)
