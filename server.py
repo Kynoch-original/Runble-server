@@ -86,6 +86,6 @@ def post_score():
     conn.close()
     return jsonify({"message": "Score saved successfully"}), 200
 
-if __name__ == "__main__":
+#if __name__ == "__main__":
     # Для локального запуску через flask run або python server.py
-    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)), debug=True)
+    #app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)), debug=True)
