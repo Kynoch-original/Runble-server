@@ -24,43 +24,48 @@ def init_db():
 
 @app.route("/scores", methods=["GET"])
 def get_top_scores():
-    conn = sqlite3.connect(DB_PATH)
-    cursor = conn.cursor()
-    cursor.execute("SELECT score FROM best_score WHERE id = 1")
-    result = cursor.fetchone()
+    conn = get_db_connection()
+    cur = conn.cursor()
+    cur.execute("SELECT nick, score FROM best_score ORDER BY score DESC LIMIT 5")
+    rows = cur.fetchall()
+    cur.close()
     conn.close()
 
-    # Формуємо список з одним топом
-    return jsonify([{"nickname": "Player", "score": result[0] if result else 0}])
+    result = [{"nickname": row[0], "score": row[1]} for row in rows]
+    return jsonify(result)
+
 
 
 @app.route("/score", methods=["POST"])
 def post_score():
-    data = request.get_json(force=True)
-    new_score = data.get("score")
+    data = request.get_json()
+    nick = data.get("nick")
+    score = data.get("score")
 
-    if new_score is None:
-        return jsonify({"error": "Missing score"}), 400
+    if not nick or score is None:
+        return jsonify({"error": "Missing fields"}), 400
 
-    conn = sqlite3.connect(DB_PATH)
-    cursor = conn.cursor()
+    conn = get_db_connection()
+    cur = conn.cursor()
 
-    cursor.execute("SELECT score FROM best_score WHERE id = 1")
-    current_score = cursor.fetchone()[0]
+    cur.execute("SELECT score FROM best_score WHERE nick = %s", (nick,))
+    row = cur.fetchone()
 
-    if new_score > current_score:
-        cursor.execute("UPDATE best_score SET score = ? WHERE id = 1", (new_score,))
-        conn.commit()
-        updated = True
+    if row:
+        current_score = row[0]
+        if score > current_score:
+            cur.execute("UPDATE best_score SET score = %s, last_score = %s WHERE nick = %s", (score, score, nick))
+        else:
+            cur.execute("UPDATE best_score SET last_score = %s WHERE nick = %s", (score, nick))
     else:
-        updated = False
+        cur.execute("INSERT INTO best_score (nick, score, last_score) VALUES (%s, %s, %s)", (nick, score, score))
 
+    conn.commit()
+    cur.close()
     conn.close()
 
-    return jsonify({
-        "message": "Score updated" if updated else "Score not higher",
-        "current_best": max(current_score, new_score)
-    }), 200
+    return jsonify({"message": "Score saved successfully"}), 200
+
 
 if __name__ == "__main__":
     init_db()
